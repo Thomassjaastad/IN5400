@@ -44,34 +44,19 @@ def initialization(conf):
                 the network.
     """
     # TODO: Task 1.1
-    params = None
+    params = {}
     dims = conf.get('layer_dimensions')
     N = dims[0]
-    j = dims[1]
-    k = dims[2]
-    sigma = 2/N
-    weights = np.random.normal(0, sigma, (j, k))
-    bias = np.zeros((k))
-    params = {'weights': weights, 'bias': bias}
+    sigma = np.sqrt(2/N)
+    for l in range(1, len(dims)):
+        weights = np.random.normal(0, sigma, (dims[l-1], dims[l]))    
+        bias = np.zeros((dims[l]))
+        params["W_%i" % l] = weights
+        #if (l+1) > (len(dims)-1):
+        #    break
+        params["b_%i" % l] = bias
     return params
 
-def Relu(z):
-    """
-    ReLu activation function:
-
-    Args:
-        input values and weights  
-    Return:
-        z values of same size as input evaluated with softmax function
-    """
-    for n in range(z.shape[0]):
-        for m in range(z.shape[1]):
-            if z[n, m] >= 0:
-                z[n, m] = z[n, m]
-            else:
-                z[n, m] = 0         
-    return z 
-    
 
 def activation(Z, activation_function):
     """Compute a non-linear activation function.
@@ -82,8 +67,8 @@ def activation(Z, activation_function):
         numpy array of floats with shape [n, m]
     """
     # TODO: Task 1.2 a)
-    if activation_function == Relu:
-        return activation_function(Z)
+    if activation_function == 'relu':
+        return Z*(Z>=0)
     else:
         print("Error: Unimplemented activation function: {}", activation_function)
         print(activation_function)
@@ -109,12 +94,6 @@ def softmax(Z):
     x_exp_tot = np.sum(x_exp[:, np.newaxis], axis = 0)
     t_k = x - np.log(x_exp_tot)
     s = np.exp(t_k)
-    ##Funker##
-    #------------------------------------------------#
-    #X = np.exp(Z)                                   #
-    #X_tot = np.sum(X[:, np.newaxis], axis = 0)      #
-    #S = X /X_tot                                    #
-    #------------------------------------------------#
     return s
 
 
@@ -140,19 +119,21 @@ def forward(conf, X_batch, params, is_training):
                We cache them in order to use them when computing gradients in the backpropagation.
     """
     # TODO: Task 1.2 c)
-
     dimensions = conf.get('layer_dimensions')
-    N = dimensions[0]
-    j = dimensions[1]
-    k = dimensions[2]
-    w1 = params.get('W_1')
-    w2 = params.get('W_2')
-    b1 = params.get('b_1')
-    b2 = params.get('b_2')
-    print(X_batch, X_batch.size)
-    Y_proposed = None
-    features = None
-
+    features = {}
+    A = X_batch
+    for l in range(1, (len(dimensions))):
+        w = params["W_%i" % l]
+        b = params['b_%i' % l]
+        b = b[:,np.newaxis]
+        Z = np.dot(w.T, A) + b
+        if l < (len(dimensions) - 1):
+            A = activation(Z, 'relu')
+        else:
+            A = softmax(Z)
+        features["A_%i" % l] = A
+        features["Z_%i" % l] = Z
+    Y_proposed = A
     return Y_proposed, features
 
 
@@ -169,11 +150,12 @@ def cross_entropy_cost(Y_proposed, Y_reference):
         num_correct: Scalar integer
     """
     # TODO: Task 1.3
-    cost = None
-    num_correct = None
-
+    cost = -1/Y_proposed.shape[1]*np.sum(np.sum(Y_reference*np.log(Y_proposed), axis=0))
+    num_correct = 0
+    for i in range(Y_proposed.shape[1]):
+        if np.argmax(Y_proposed[:, i]) == np.argmax(Y_reference[:, i]):
+            num_correct += 1
     return cost, num_correct
-
 
 def activation_derivative(Z, activation_function):
     """Compute the gradient of the activation function.
@@ -184,8 +166,8 @@ def activation_derivative(Z, activation_function):
         numpy array of floats with shape [n, m]
     """
     # TODO: Task 1.4 a)
-    if activation_function == 'relu':
-        return None
+    if activation_function == 'relu_der':
+        return 1*(Z>=0)
     else:
         print("Error: Unimplemented derivative of activation function: {}", activation_function)
         return None
@@ -209,7 +191,35 @@ def backward(conf, Y_proposed, Y_reference, params, features):
                 - the gradient of the biases grad_b^[l] for l in [1, L].
     """
     # TODO: Task 1.4 b)
-    grad_params = None
+    grad_params = {}
+    scale = 1/Y_proposed.shape[1]
+    loss_lastlayer_b = np.sum((Y_proposed - Y_reference), axis = 1, keepdims = True)*scale
+    loss_lastlayer_W = Y_proposed - Y_reference
+    dimensions = conf.get('layer_dimensions')
+    L = len(dimensions) - 1
+    dl_dZ = {}
+    # activation has 0, 1, 2 activations. z, b and w have 1, 2
+    for l in reversed(range(1, len(dimensions))):
+        w = params['W_%i' % l]
+        b = params['b_%i' % l]
+        A_prev = features['A_%i' % (l-1)]   #is l-1 when testing
+        Z = features['Z_%i' % l]
+        if l == L:
+            #last layer l = 2
+            grad_params['grad_b_%i' % l] = loss_lastlayer_b
+            grad_params['grad_W_%i' % l] = np.dot(A_prev, loss_lastlayer_W.T)*scale 
+        else:
+            w_last = params['W_%i' % (l + 1)]
+            temp = grad_params['grad_W_%i' % (l + 1)]
+            dl_dZ['dZ_%i' % l] = np.dot(w_last, loss_lastlayer_W)
+            #hidden layers l = 1
+            J_zl = np.dot(dl_dZ['dZ_%i' % l], activation_derivative(Z, 'relu_der').T)*scale
+            J_zl_b = np.diagonal(J_zl)
+            J_zl_W = activation_derivative(Z, 'relu_der')*dl_dZ['dZ_%i' % l]
+            print(J_zl_W.shape)
+            grad_params['grad_b_%i' % l] = J_zl_b[:, np.newaxis]
+            grad_params['grad_W_%i' % l] = scale*np.dot(A_prev, J_zl_W.T)
+            loss_lastlayer_W = J_zl_W  
     return grad_params
 
 
@@ -225,5 +235,15 @@ def gradient_descent_update(conf, params, grad_params):
         params: Updated parameter dictionary.
     """
     # TODO: Task 1.5
-    updated_params = None
+    updated_params = {}
+    lamb = conf['learning_rate']
+    numb_layers = int(len(params)/2)
+    for l in range(1, numb_layers):
+        W = params['W_%i' % l]
+        b = params['b_%i' % l]
+        grad_w = grad_params['grad_W_%i' % l]
+        grad_b = grad_params['grad_b_%i' % l]
+        print(W.shape, grad_w.shape)
+        #updated_params['W_%i' % l] = W -lamb*grad_w 
+        #updated_params['b_%i' % l] = b -lamb*grad_b
     return updated_params
