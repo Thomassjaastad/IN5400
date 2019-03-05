@@ -124,7 +124,7 @@ def forward(conf, X_batch, params, is_training):
     for l in range(1, (len(dimensions))):
         w = params["W_%i" % l]
         b = params['b_%i' % l]
-        b = np.reshape(b.size, 1)
+        #b = np.reshape(b.size, 1)
         #Z = np.dot(A, w.T) + b
         Z = np.dot(w.T, A) + b
         if l < (len(dimensions) - 1):
@@ -150,8 +150,6 @@ def cross_entropy_cost(Y_proposed, Y_reference):
         num_correct: Scalar integer
     """
     # TODO: Task 1.3
-    #print(Y_proposed.shape[1])
-    #print(np.sum(Y_proposed[:,1]))
     cost = -1/Y_proposed.shape[1]*np.sum(np.sum(Y_reference*np.log(Y_proposed + 1e-14) , axis=0))
     num_correct = 0
     for i in range(Y_proposed.shape[1]):
@@ -200,50 +198,18 @@ def backward(conf, Y_proposed, Y_reference, params, features):
     
     grad_params['grad_b_%i' % L] = np.sum((Y_proposed - Y_reference), axis = 1, keepdims = True)*scale 
     loss_lastlayer_W = Y_proposed - Y_reference
-    
-    A_prev = features['A_%i' % (L-1)] 
+    A_prev = features['A_%i' % (L - 1)] 
     grad_params['grad_W_%i' % L] = np.dot(A_prev, loss_lastlayer_W.T)*scale
     
-    grad_b_temp = {}
-    grad_b_temp['grad_temp_b_%i' % L] = Y_proposed - Y_reference
-    
-    grad_W_temp = {}
-    grad_W_temp['grad_temp_W_%i' % L] = Y_proposed - Y_reference
-    
-    #print(grad_W_temp['grad_temp_W_2'])    
     for l in reversed(range(1, L)):
         w_last = params['W_%i' % (l + 1)]
-        b = params['b_%i' % l]
-        A_prev = features['A_%i' % (l-1)]   #is l-1 when testing
+        A_prev = features['A_%i' % (l - 1)]   #is l-1 when testing
         Z = features['Z_%i' % l]
-        
-        dj_dz_b = np.dot(w_last, grad_b_temp['grad_temp_b_%i' % (l+1)])
-        dj_dz_W = np.dot(w_last, grad_W_temp['grad_temp_W_%i' % (l+1)])
-                    
-        #J_z_b = np.dot(activation_derivative(Z, 'relu_der'), dj_dz_b.T)*scale
-        J_z_W = activation_derivative(Z, 'relu_der')*dj_dz_W*scale
-        J_z_b = np.dot(J_z_W, np.ones((Y_proposed.shape[1], 1)))     
-        grad_params['grad_b_%i' % l] = J_z_b
-        grad_b_temp['grad_temp_b_%i' % l] = J_z_b
-        
-        
-        grad_params['grad_W_%i' % l] = np.dot(A_prev, J_z_W.T)
-        grad_W_temp['grad_temp_W_%i' % l] = J_z_W
-        #if l == L:
-        #    #last layer l = 2
-        #    grad_params['grad_b_%i' % l] = loss_lastlayer_b
-        #    grad_params['grad_W_%i' % l] = np.dot(A_prev, loss_lastlayer_W.T)*scale 
-        #else:
-        #    w_last = params['W_%i' % (l + 1)]
-        #    temp = grad_params['grad_W_%i' % (l + 1)]
-        #    dl_dZ['dZ_%i' % l] = 
-        #    hidden layers l = 1
-        #    J_zl = np.dot(dl_dZ['dZ_%i' % l], activation_derivative(Z, 'relu_der').T)*scale
-        #    J_zl_b = np.diagonal(J_zl)
-        #    J_zl_W = activation_derivative(Z, 'relu_der')*dl_dZ['dZ_%i' % l]
-        #    grad_params['grad_b_%i' % l] = J_zl_b[:, np.newaxis]
-        #    grad_params['grad_W_%i' % l] = scale*np.dot(A_prev, J_zl_W.T)
-        #    loss_lastlayer_W = J_zl_W  
+        dj_dz_W = np.dot(w_last, loss_lastlayer_W)
+        loss_lastlayer_W = scale*activation_derivative(Z, 'relu_der')*dj_dz_W
+
+        grad_params['grad_b_%i' % l] = np.dot(loss_lastlayer_W, np.ones((Y_proposed.shape[1], 1)))                
+        grad_params['grad_W_%i' % l] = np.dot(A_prev, loss_lastlayer_W.T)
     return grad_params
 
 
@@ -261,17 +227,14 @@ def gradient_descent_update(conf, params, grad_params):
     # TODO: Task 1.5
     updated_params = {}
     lamb = conf['learning_rate']
-    numb_layers = int(len(params)/2)
-    for l in range(1, numb_layers+1):
+    numb_layers = int(len(params)/2) +1
+
+    for l in range(1, numb_layers):
         W = params['W_%i' % l]
         b = params['b_%i' % l]
         grad_w = grad_params['grad_W_%i' % l]
         grad_b = grad_params['grad_b_%i' % l]
-        updated_params['W_%i' % l] = W -lamb*grad_w 
-        updated_params['b_%i' % l] = b -lamb*grad_b
+        updated_params['W_%i' % l] = W - lamb*grad_w 
+        updated_params['b_%i' % l] = b - lamb*grad_b
     return updated_params
-    
-    
-    
-    
     
